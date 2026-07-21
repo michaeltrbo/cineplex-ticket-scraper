@@ -1,0 +1,17 @@
+{
+  "webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE",
+  "location_id": "7408",
+  "subscription_key": "dcdac5601d864addbc2675a2e96cb1f8",
+  "movie_name": "The Odyssey",
+  "required_formats": ["70mm", "IMAX"],
+  "start_date": "today",
+  "end_date": "2026-08-30",
+  "target_rows": ["E", "F", "G", "H", "I", "J", "K", "L", "M"],
+  "exclude_accessibility_seats": true,
+  "excluded_seat_labels": ["EC1", "EW1", "EW2", "EC4", "EC21", "EW3", "EW4", "EC24"],
+  "weekday_start_hour": 16,
+  "weekday_end_hour": 20,
+  "min_consecutive_seats": 2,
+  "show_seat_map": true,
+  "send_no_showtimes_alert": true
+}
