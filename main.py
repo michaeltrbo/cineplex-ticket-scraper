@@ -118,10 +118,10 @@ def build_visual_seat_map(layout_data, avail_data):
 
         for seat in seats:
             seat_id = seat.get("id")
-            seat_label = seat.get("label")
+            seat_label = seat.get("label", "")
             seat_type = seat.get("type", "")
 
-            is_accessible = (seat_label in EXCLUDED_SEATS or seat_type.lower() in ["wheelchair", "companion"])
+            is_accessible = seat_type.lower() in ["wheelchair", "companion"] or str(seat_label).upper().startswith(("EC", "EW"))
             status = str(avail_data.get(seat_id, "Occupied")).lower()
 
             if is_accessible:
@@ -169,22 +169,41 @@ def check_seats_for_session(showtime_id, date_str, time_str, exp_name):
                 if row_label not in TARGET_ROWS:
                     continue
 
-                avail_in_row = []
+                consecutive_avail = []
+                current_group = []
+
                 for seat in row.get("seats", []):
                     seat_id = seat.get("id")
-                    seat_label = seat.get("label")
+                    seat_label = seat.get("label", "")
                     seat_type = seat.get("type", "")
 
-                    if EXCLUDE_ACCESSIBILITY:
-                        if seat_label in EXCLUDED_SEATS or seat_type.lower() in ["wheelchair", "companion"]:
-                            continue
+                    is_accessible = seat_type.lower() in ["wheelchair", "companion"] or str(seat_label).upper().startswith(("EC", "EW"))
 
-                    status = avail_data.get(seat_id, "Occupied")
-                    if str(status).lower() == "available":
-                        avail_in_row.append(seat_label)
+                    if EXCLUDE_ACCESSIBILITY and is_accessible:
+                        if len(current_group) >= MIN_CONSECUTIVE_SEATS:
+                            consecutive_avail.extend(current_group)
+                        current_group = []
+                        continue
 
-                if len(avail_in_row) >= MIN_CONSECUTIVE_SEATS:
-                    row_summary.append(f"💺 Row {row_label}: {', '.join(avail_in_row)}")
+                    if seat_label in EXCLUDED_SEATS:
+                        if len(current_group) >= MIN_CONSECUTIVE_SEATS:
+                            consecutive_avail.extend(current_group)
+                        current_group = []
+                        continue
+
+                    status = str(avail_data.get(seat_id, "Occupied")).lower()
+                    if status == "available":
+                        current_group.append(seat_label)
+                    else:
+                        if len(current_group) >= MIN_CONSECUTIVE_SEATS:
+                            consecutive_avail.extend(current_group)
+                        current_group = []
+
+                if len(current_group) >= MIN_CONSECUTIVE_SEATS:
+                    consecutive_avail.extend(current_group)
+
+                if consecutive_avail:
+                    row_summary.append(f"💺 Row {row_label}: {', '.join(consecutive_avail)}")
 
             if row_summary:
                 seats_text = "\n".join(row_summary)
