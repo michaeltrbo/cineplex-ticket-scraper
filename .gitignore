@@ -11,3 +11,10 @@ __pycache__/
 
 # Ignore local configuration files
 config.json
+.env
+
+# Ignore task scheduler scripts and XML configurations
+*.ps1
+*.xml
+register_task.ps1
+CineplexTicketChecker.xml
