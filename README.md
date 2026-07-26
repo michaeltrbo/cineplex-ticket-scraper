@@ -64,7 +64,8 @@ Here is an example `config.json`:
   "weekday_end_hour": 20,
   "min_consecutive_seats": 2,
   "show_seat_map": true,
-  "send_no_showtimes_alert": true
+  "send_no_showtimes_alert": true,
+  "only_notify_on_seat_change": true
 }
 ```
 
@@ -86,6 +87,8 @@ Here is an example `config.json`:
 | `weekday_end_hour` | End hour (24h format) on weekdays (`20` = 8:00 PM). Set `null` to disable. | `20` |
 | `min_consecutive_seats` | Minimum available seats required in a row to alert. | `2` |
 | `show_seat_map` | `true` to include visual emoji seat map in Discord alerts. | `true` |
+| `send_no_showtimes_alert` | `true` to send a notification if no showtimes are found in date range. | `true` |
+| `only_notify_on_seat_change` | `true` to suppress Discord messages if filtered seats for a showing haven't changed. | `true` |
 
 ---
 

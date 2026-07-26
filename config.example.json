@@ -13,5 +13,6 @@
   "weekday_end_hour": 20,
   "min_consecutive_seats": 2,
   "show_seat_map": true,
-  "send_no_showtimes_alert": true
+  "send_no_showtimes_alert": true,
+  "only_notify_on_seat_change": true
 }

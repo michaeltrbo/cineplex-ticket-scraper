@@ -9,8 +9,9 @@
 __pycache__/
 *.py[cod]
 
-# Ignore local configuration files
+# Ignore local configuration and runtime cache files
 config.json
+seat_cache.json
 .env
 
 # Ignore task scheduler scripts and XML configurations

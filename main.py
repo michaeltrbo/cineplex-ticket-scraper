@@ -46,6 +46,25 @@ WEEKDAY_END_HOUR = CONFIG.get("weekday_end_hour", 20)     # Default 8:00 PM (20)
 MIN_CONSECUTIVE_SEATS = CONFIG.get("min_consecutive_seats", 2)
 SHOW_SEAT_MAP = CONFIG.get("show_seat_map", True)
 SEND_NO_SHOWTIMES_ALERT = CONFIG.get("send_no_showtimes_alert", True)
+ONLY_NOTIFY_ON_SEAT_CHANGE = CONFIG.get("only_notify_on_seat_change", True)
+
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seat_cache.json")
+
+def load_seat_cache():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            safe_print(f"⚠️ Error reading seat_cache.json: {e}")
+    return {}
+
+def save_seat_cache(cache):
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+    except Exception as e:
+        safe_print(f"⚠️ Error saving seat_cache.json: {e}")
 
 # Parse Start Date
 start_date_val = CONFIG.get("start_date", "today")
@@ -140,10 +159,11 @@ def build_visual_seat_map(layout_data, avail_data):
 
     return "\n".join(map_lines)
 
-def check_seats_for_session(showtime_id, date_str, time_str, exp_name):
+def check_seats_for_session(showtime_id, date_str, time_str, exp_name, seat_cache):
     layout_url = f"https://apis.cineplex.com/prod/ticketing/api/v1/theatre/{LOCATION_ID}/showtime/{showtime_id}/seat-layout"
     avail_url = f"https://apis.cineplex.com/prod/ticketing/api/v1/theatre/{LOCATION_ID}/showtime/{showtime_id}/seat-availability"
     headers = get_headers()
+    sid_str = str(showtime_id)
 
     try:
         r_layout = requests.get(layout_url, headers=headers, timeout=10)
@@ -214,12 +234,29 @@ def check_seats_for_session(showtime_id, date_str, time_str, exp_name):
                     f"{seat_map_str}"
                     f"**Available Rows:**\n{seats_text}"
                 )
-                send_alert(alert_msg)
+
+                cached_seats = seat_cache.get(sid_str)
+                if ONLY_NOTIFY_ON_SEAT_CHANGE and cached_seats == row_summary:
+                    safe_print(f"ℹ️ Seats for session {showtime_id} ({date_str} {time_str}) haven't changed. Skipping Discord alert.")
+                else:
+                    send_alert(alert_msg)
+                    seat_cache[sid_str] = row_summary
+                    save_seat_cache(seat_cache)
                 return True
+            else:
+                if sid_str in seat_cache:
+                    del seat_cache[sid_str]
+                    save_seat_cache(seat_cache)
 
         else:
-            safe_print(f"Showtime exists for {date_str} at {time_str} ({exp_name})! Session ID: {showtime_id}")
-            send_alert(f"🎟️ Showtime Available for {MOVIE_NAME} ({exp_name})!\nDate: {date_str} | Time: {time_str} | Session ID: {showtime_id}")
+            cached_seats = seat_cache.get(sid_str)
+            if ONLY_NOTIFY_ON_SEAT_CHANGE and cached_seats == "SHOWTIME_EXISTS":
+                safe_print(f"ℹ️ Showtime alert already sent for session {showtime_id}. Skipping duplicate alert.")
+            else:
+                safe_print(f"Showtime exists for {date_str} at {time_str} ({exp_name})! Session ID: {showtime_id}")
+                send_alert(f"🎟️ Showtime Available for {MOVIE_NAME} ({exp_name})!\nDate: {date_str} | Time: {time_str} | Session ID: {showtime_id}")
+                seat_cache[sid_str] = "SHOWTIME_EXISTS"
+                save_seat_cache(seat_cache)
             return True
 
     except Exception as e:
@@ -227,9 +264,11 @@ def check_seats_for_session(showtime_id, date_str, time_str, exp_name):
     return False
 
 def run_tracker():
+    seat_cache = load_seat_cache()
     safe_print(f"Starting Ticket Scraper for '{MOVIE_NAME}'...")
     safe_print(f"Checking Location ID {LOCATION_ID}...")
     safe_print(f"Date Range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
+    safe_print(f"Only Notify On Seat Change: {ONLY_NOTIFY_ON_SEAT_CHANGE}")
     
     if WEEKDAY_START_HOUR is not None and WEEKDAY_END_HOUR is not None:
         start_fmt = f"{WEEKDAY_START_HOUR % 12 or 12}:00 {'PM' if WEEKDAY_START_HOUR >= 12 else 'AM'}"
@@ -297,7 +336,7 @@ def run_tracker():
 
                                         safe_print(f"Found Showtime! Date: {date_display_fmt} | Time: {parsed_time} | Format: {exp_display} | Session: {sid}")
                                         found_any = True
-                                        check_seats_for_session(sid, date_display_fmt, parsed_time, exp_display)
+                                        check_seats_for_session(sid, date_display_fmt, parsed_time, exp_display, seat_cache)
 
         except Exception as err:
             safe_print(f"Error querying showtimes for {date_display_fmt}: {err}")
