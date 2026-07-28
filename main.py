@@ -287,7 +287,7 @@ def run_tracker():
     while current_dt <= END_DATE:
         is_weekend = current_dt.weekday() in [5, 6]
         date_api_fmt = f"{current_dt.month}/{current_dt.day}/{current_dt.year}"
-        date_display_fmt = current_dt.strftime("%Y-%m-%d")
+        date_display_fmt = current_dt.strftime("%A, %Y-%m-%d")
 
         api_url = f"https://apis.cineplex.com/prod/cpx/theatrical/api/v1/showtimes?language=en&locationId={LOCATION_ID}&date={date_api_fmt}"
 
