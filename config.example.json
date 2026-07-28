@@ -1,6 +1,6 @@
 {
   "webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE",
-  "location_id": "7408",
+  "location_ids": ["7408", "7420"],
   "subscription_key": "dcdac5601d864addbc2675a2e96cb1f8",
   "movie_name": "The Odyssey",
   "required_formats": ["70mm", "IMAX"],

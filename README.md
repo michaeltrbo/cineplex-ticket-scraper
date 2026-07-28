@@ -51,7 +51,7 @@ Here is an example `config.json`:
 ```json
 {
   "webhook_url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL",
-  "location_id": "7408",
+  "location_ids": ["7408", "7420"],
   "subscription_key": "dcdac5601d864addbc2675a2e96cb1f8",
   "movie_name": "The Odyssey",
   "required_formats": ["70mm", "IMAX"],
@@ -74,7 +74,7 @@ Here is an example `config.json`:
 | Setting | Description | Default |
 |---|---|---|
 | `webhook_url` | Your Discord Webhook URL for receiving alerts. | `""` |
-| `location_id` | Cineplex theatre location ID. | `"7408"` (Vaughan) |
+| `location_ids` | Array of Cineplex theatre location IDs to check (e.g. `["7408", "7420"]`). Also supports single `location_id`. | `["7408", "7420"]` (Vaughan & Mississauga Square One) |
 | `subscription_key` | Cineplex API Subscription Key header. | Public default key |
 | `movie_name` | Name or substring of the movie to monitor. | `"The Odyssey"` |
 | `required_formats` | Experience formats required (e.g. `["70mm", "IMAX"]`). | `["70mm", "IMAX"]` |

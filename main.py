@@ -32,7 +32,15 @@ def load_config():
 
 CONFIG = load_config()
 
-LOCATION_ID = CONFIG.get("location_id", "7408")
+# Support multiple location IDs via 'location_ids' list, falling back to 'location_id'
+raw_locations = CONFIG.get("location_ids") or CONFIG.get("locations") or CONFIG.get("location_id", ["7408", "7420"])
+if isinstance(raw_locations, (str, int)):
+    LOCATION_IDS = [str(raw_locations)]
+elif isinstance(raw_locations, list):
+    LOCATION_IDS = [str(loc.get("id") if isinstance(loc, dict) else loc) for loc in raw_locations]
+else:
+    LOCATION_IDS = ["7408", "7420"]
+
 # Standard public Cineplex Azure API Management subscription key
 SUBSCRIPTION_KEY = CONFIG.get("subscription_key", "dcdac5601d864addbc2675a2e96cb1f8")
 MOVIE_NAME = CONFIG.get("movie_name", "The Odyssey")
@@ -159,11 +167,11 @@ def build_visual_seat_map(layout_data, avail_data):
 
     return "\n".join(map_lines)
 
-def check_seats_for_session(showtime_id, date_str, time_str, exp_name, seat_cache):
-    layout_url = f"https://apis.cineplex.com/prod/ticketing/api/v1/theatre/{LOCATION_ID}/showtime/{showtime_id}/seat-layout"
-    avail_url = f"https://apis.cineplex.com/prod/ticketing/api/v1/theatre/{LOCATION_ID}/showtime/{showtime_id}/seat-availability"
+def check_seats_for_session(location_id, theatre_name, showtime_id, date_str, time_str, exp_name, seat_cache):
+    layout_url = f"https://apis.cineplex.com/prod/ticketing/api/v1/theatre/{location_id}/showtime/{showtime_id}/seat-layout"
+    avail_url = f"https://apis.cineplex.com/prod/ticketing/api/v1/theatre/{location_id}/showtime/{showtime_id}/seat-availability"
     headers = get_headers()
-    sid_str = str(showtime_id)
+    cache_key = f"{location_id}_{showtime_id}"
 
     try:
         r_layout = requests.get(layout_url, headers=headers, timeout=10)
@@ -229,44 +237,45 @@ def check_seats_for_session(showtime_id, date_str, time_str, exp_name, seat_cach
                 seats_text = "\n".join(row_summary)
                 alert_msg = (
                     f"🚨 **Seats Found for {MOVIE_NAME} ({exp_name})!**\n"
+                    f"📍 **Theatre:** {theatre_name}\n"
                     f"📅 **Date:** {date_str} | ⏰ **Time:** {time_str}\n"
                     f"🎟️ **Session ID:** {showtime_id}\n\n"
                     f"{seat_map_str}"
                     f"**Available Rows:**\n{seats_text}"
                 )
 
-                cached_seats = seat_cache.get(sid_str)
+                cached_seats = seat_cache.get(cache_key)
                 if ONLY_NOTIFY_ON_SEAT_CHANGE and cached_seats == row_summary:
-                    safe_print(f"ℹ️ Seats for session {showtime_id} ({date_str} {time_str}) haven't changed. Skipping Discord alert.")
+                    safe_print(f"ℹ️ Seats for session {showtime_id} at {theatre_name} ({date_str} {time_str}) haven't changed. Skipping Discord alert.")
                 else:
                     send_alert(alert_msg)
-                    seat_cache[sid_str] = row_summary
+                    seat_cache[cache_key] = row_summary
                     save_seat_cache(seat_cache)
                 return True
             else:
-                if sid_str in seat_cache:
-                    del seat_cache[sid_str]
+                if cache_key in seat_cache:
+                    del seat_cache[cache_key]
                     save_seat_cache(seat_cache)
 
         else:
-            cached_seats = seat_cache.get(sid_str)
+            cached_seats = seat_cache.get(cache_key)
             if ONLY_NOTIFY_ON_SEAT_CHANGE and cached_seats == "SHOWTIME_EXISTS":
-                safe_print(f"ℹ️ Showtime alert already sent for session {showtime_id}. Skipping duplicate alert.")
+                safe_print(f"ℹ️ Showtime alert already sent for session {showtime_id} at {theatre_name}. Skipping duplicate alert.")
             else:
-                safe_print(f"Showtime exists for {date_str} at {time_str} ({exp_name})! Session ID: {showtime_id}")
-                send_alert(f"🎟️ Showtime Available for {MOVIE_NAME} ({exp_name})!\nDate: {date_str} | Time: {time_str} | Session ID: {showtime_id}")
-                seat_cache[sid_str] = "SHOWTIME_EXISTS"
+                safe_print(f"Showtime exists for {date_str} at {time_str} ({exp_name}) at {theatre_name}! Session ID: {showtime_id}")
+                send_alert(f"🎟️ Showtime Available for {MOVIE_NAME} ({exp_name})!\n📍 **Theatre:** {theatre_name}\n📅 **Date:** {date_str} | ⏰ **Time:** {time_str} | Session ID: {showtime_id}")
+                seat_cache[cache_key] = "SHOWTIME_EXISTS"
                 save_seat_cache(seat_cache)
             return True
 
     except Exception as e:
-        safe_print(f"Error checking seats for session {showtime_id}: {e}")
+        safe_print(f"Error checking seats for session {showtime_id} at {theatre_name}: {e}")
     return False
 
 def run_tracker():
     seat_cache = load_seat_cache()
     safe_print(f"Starting Ticket Scraper for '{MOVIE_NAME}'...")
-    safe_print(f"Checking Location ID {LOCATION_ID}...")
+    safe_print(f"Checking Location IDs: {', '.join(LOCATION_IDS)}...")
     safe_print(f"Date Range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
     safe_print(f"Only Notify On Seat Change: {ONLY_NOTIFY_ON_SEAT_CHANGE}")
     
@@ -289,62 +298,64 @@ def run_tracker():
         date_api_fmt = f"{current_dt.month}/{current_dt.day}/{current_dt.year}"
         date_display_fmt = current_dt.strftime("%A, %Y-%m-%d")
 
-        api_url = f"https://apis.cineplex.com/prod/cpx/theatrical/api/v1/showtimes?language=en&locationId={LOCATION_ID}&date={date_api_fmt}"
+        for location_id in LOCATION_IDS:
+            api_url = f"https://apis.cineplex.com/prod/cpx/theatrical/api/v1/showtimes?language=en&locationId={location_id}&date={date_api_fmt}"
 
-        try:
-            r = requests.get(api_url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                items = r.json()
-                for theatre_data in items:
-                    for d in theatre_data.get("dates", []):
-                        for movie in d.get("movies", []):
-                            movie_name = movie.get("name", "")
-                            if MOVIE_NAME.lower() in movie_name.lower():
-                                for exp in movie.get("experiences", []):
-                                    exp_types = [t.lower() for t in exp.get("experienceTypes", [])]
-                                    exp_display = ", ".join(exp.get("experienceTypes", []))
+            try:
+                r = requests.get(api_url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    items = r.json()
+                    for theatre_data in items:
+                        theatre_name = theatre_data.get("theatre") or f"Location {location_id}"
+                        for d in theatre_data.get("dates", []):
+                            for movie in d.get("movies", []):
+                                movie_name = movie.get("name", "")
+                                if MOVIE_NAME.lower() in movie_name.lower():
+                                    for exp in movie.get("experiences", []):
+                                        exp_types = [t.lower() for t in exp.get("experienceTypes", [])]
+                                        exp_display = ", ".join(exp.get("experienceTypes", []))
 
-                                    matches_formats = True
-                                    if REQUIRED_FORMATS:
-                                        for req_fmt in REQUIRED_FORMATS:
-                                            fmt_lower = req_fmt.lower()
-                                            if not (fmt_lower in exp_types or fmt_lower in movie_name.lower() or fmt_lower in exp_display.lower()):
-                                                matches_formats = False
-                                                break
+                                        matches_formats = True
+                                        if REQUIRED_FORMATS:
+                                            for req_fmt in REQUIRED_FORMATS:
+                                                fmt_lower = req_fmt.lower()
+                                                if not (fmt_lower in exp_types or fmt_lower in movie_name.lower() or fmt_lower in exp_display.lower()):
+                                                    matches_formats = False
+                                                    break
 
-                                    if not matches_formats:
-                                        continue
+                                        if not matches_formats:
+                                            continue
 
-                                    for session in exp.get("sessions", []):
-                                        st_time = session.get("showStartDateTime", "")
-                                        sid = session.get("vistaSessionId")
+                                        for session in exp.get("sessions", []):
+                                            st_time = session.get("showStartDateTime", "")
+                                            sid = session.get("vistaSessionId")
 
-                                        try:
-                                            parsed_dt = datetime.strptime(st_time, "%Y-%m-%dT%H:%M:%S")
-                                            parsed_time = parsed_dt.strftime("%I:%M %p")
-                                            show_hour = parsed_dt.hour
-                                        except Exception:
-                                            parsed_time = st_time
-                                            show_hour = 12
+                                            try:
+                                                parsed_dt = datetime.strptime(st_time, "%Y-%m-%dT%H:%M:%S")
+                                                parsed_time = parsed_dt.strftime("%I:%M %p")
+                                                show_hour = parsed_dt.hour
+                                            except Exception:
+                                                parsed_time = st_time
+                                                show_hour = 12
 
-                                        # Apply weekday hour window filtering
-                                        if not is_weekend:
-                                            if WEEKDAY_START_HOUR is not None and show_hour < WEEKDAY_START_HOUR:
-                                                continue
-                                            if WEEKDAY_END_HOUR is not None and show_hour > WEEKDAY_END_HOUR:
-                                                continue
+                                            # Apply weekday hour window filtering
+                                            if not is_weekend:
+                                                if WEEKDAY_START_HOUR is not None and show_hour < WEEKDAY_START_HOUR:
+                                                    continue
+                                                if WEEKDAY_END_HOUR is not None and show_hour > WEEKDAY_END_HOUR:
+                                                    continue
 
-                                        safe_print(f"Found Showtime! Date: {date_display_fmt} | Time: {parsed_time} | Format: {exp_display} | Session: {sid}")
-                                        found_any = True
-                                        check_seats_for_session(sid, date_display_fmt, parsed_time, exp_display, seat_cache)
+                                            safe_print(f"Found Showtime! Theatre: {theatre_name} | Date: {date_display_fmt} | Time: {parsed_time} | Format: {exp_display} | Session: {sid}")
+                                            found_any = True
+                                            check_seats_for_session(location_id, theatre_name, sid, date_display_fmt, parsed_time, exp_display, seat_cache)
 
-        except Exception as err:
-            safe_print(f"Error querying showtimes for {date_display_fmt}: {err}")
+            except Exception as err:
+                safe_print(f"Error querying showtimes for location {location_id} on {date_display_fmt}: {err}")
 
         current_dt += timedelta(days=1)
 
     if not found_any and SEND_NO_SHOWTIMES_ALERT:
-        msg = f"ℹ️ Test Webhook: No showtimes for '{MOVIE_NAME}' found matching criteria between {START_DATE.strftime('%Y-%m-%d')} and {END_DATE.strftime('%Y-%m-%d')}."
+        msg = f"ℹ️ Test Webhook: No showtimes for '{MOVIE_NAME}' found matching criteria between {START_DATE.strftime('%Y-%m-%d')} and {END_DATE.strftime('%Y-%m-%d')} across locations: {', '.join(LOCATION_IDS)}."
         safe_print(msg)
         send_alert(msg)
 
